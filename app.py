@@ -11,7 +11,7 @@ CORS(app)
 # Gemini setup
 GEMINI_API_KEY = "AIzaSyDqhF5cOc2u0olu-i6w8hLBFX1dTV8z5Z4"
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 issue_store = []
 
