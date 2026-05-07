@@ -8,7 +8,7 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-GROQ_API_KEY = os.environ.get("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", "")
+GROQ_API_KEY = os.environ.get("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", "")
 
 issue_store = []
 
