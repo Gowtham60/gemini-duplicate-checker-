@@ -1,14 +1,14 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from groq import Groq
+import os
 import json
 import re
 
 app = Flask(__name__)
 CORS(app)
 
-# Groq setup — replace with your key
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.environ.get("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", "")
 client = Groq(api_key=GROQ_API_KEY)
 
 issue_store = []
@@ -19,36 +19,54 @@ def check_duplicate_with_ai(new_title, new_desc, existing_issues):
         for iss in existing_issues
     ])
 
-    prompt = f"""You are a duplicate issue detector. Check if the NEW ISSUE is a duplicate of any EXISTING ISSUE.
+    prompt = f"""Duplicate issue detector. Check if NEW ISSUE matches any EXISTING ISSUE by meaning.
 
-EXISTING ISSUES:
+EXISTING:
 {existing_text}
 
-NEW ISSUE:
-title='{new_title}'
-description='{new_desc}'
+NEW: title='{new_title}' description='{new_desc}'
 
 Rules:
-- Compare BOTH title AND description MEANING together
-- "blade broken" and "blade has an issue" = SAME MEANING = duplicate
-- "fan" + "blade broken" vs "fan" + "wire issue" = DIFFERENT = not duplicate
-- Focus on meaning not exact words
-- Same problem described differently = duplicate
+- Same or similar description meaning = duplicate
+- "blade broken" = "blade has an issue" = duplicate  
+- Different description = not duplicate even if same title
 
-Reply ONLY valid JSON no markdown:
-{{"isDuplicate": true, "matchedIssueNumber": 1, "matchedIssueTitle": "title", "reason": "reason"}}"""
+You MUST respond with ONLY this JSON and nothing else:
+{{"isDuplicate": true, "matchedIssueNumber": 1, "matchedIssueTitle": "title"}}
+or
+{{"isDuplicate": false, "matchedIssueNumber": null, "matchedIssueTitle": null}}"""
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": "You are a JSON-only response bot. You only output valid JSON, nothing else. No explanations, no markdown, no code blocks."},
+            {"role": "user", "content": prompt}
+        ],
         temperature=0,
-        max_tokens=200
+        max_tokens=100
     )
 
     raw = response.choices[0].message.content.strip()
-    raw = re.sub(r'```json\s*', '', raw)
-    raw = re.sub(r'```\s*', '', raw)
-    return json.loads(raw.strip())
+    print(f"AI RAW RESPONSE: {raw}")
+
+    # Extract JSON from response
+    # Try direct parse first
+    try:
+        return json.loads(raw)
+    except:
+        pass
+
+    # Try finding JSON in the response
+    match = re.search(r'\{.*?\}', raw, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except:
+            pass
+
+    # If all fails - return not duplicate
+    print(f"JSON PARSE FAILED for: {raw}")
+    return {"isDuplicate": False, "matchedIssueNumber": None, "matchedIssueTitle": None}
 
 
 @app.route("/raise-issue", methods=["POST"])
@@ -124,6 +142,5 @@ def health():
     return jsonify({"status": "ok", "issueCount": len(issue_store)})
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
